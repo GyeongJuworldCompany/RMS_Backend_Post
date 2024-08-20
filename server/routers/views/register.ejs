@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>User Registration</title>
+  </head>
+  <body>
+    <h1>팀별 위험성 평가 계정 등록</h1>
+    <form action="/register" method="POST">
+      <label for="id">ID : </label>
+      <input type="text" id="id" name="id" required /><br />
+
+      <label for="pw">PW : </label>
+      <input type="password" id="pw" name="pw" required /><br />
+
+      <label for="auth">Auth Lv (2 기입):</label>
+      <input type="number" id="auth" name="Auth" required step="1" /><br />
+      <!-- Note the change in name attribute to match server-side casing -->
+
+      <label for="handler">사번:</label>
+      <input
+        type="number"
+        id="handler"
+        name="Handler"
+        required
+        step="1"
+      /><br />
+      <!-- Note the change in name attribute to match server-side casing -->
+
+      <label for="department">부서:</label>
+      <input type="text" id="department" name="Department" required /><br />
+      <!-- Added the department field -->
+
+      <button type="submit">등록</button>
+    </form>
+  </body>
+</html>

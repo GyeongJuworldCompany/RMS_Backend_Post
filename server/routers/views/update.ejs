@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>데이터 업데이트</title>
+</head>
+<body>
+    <h1>데이터 업데이트</h1>
+    <form action="/update/<%= data.RFSeq %>" method="post" enctype="multipart/form-data">
+        
+      <label for="Updated_By">Updated By:</label>
+        <input type="text" id="Updated_By" name="Updated_By" value="<%= data.Updated_By %>" maxlength="10" required><br>
+
+        <label for="Created_At">Created At:</label>
+        <input type="datetime-local" id="Created_At" name="Created_At" required><br>
+        
+          
+        <label for="RFKind">RFKind: (개선 전(B)/후(A))</label>
+        <input type="text" id="RFKind" name="RFKind" value="<%= data.RFKind %>" required><br>
+        
+        <label for="file">파일 변경 (선택사항):</label> 
+        <input type="file" id="file" name="file"><br>
+
+        
+        
+        <button type="submit">제출!! </button>
+    </form>
+</body>
+</html>

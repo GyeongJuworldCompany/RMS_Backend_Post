@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>위험 요소 관리 생성 폼</title>
+</head>
+<body>
+    <h1>위험 요소 관리 정보 입력</h1>
+    <form action="/create" method="post" enctype="multipart/form-data">
+        <div>
+            <label for="Date">날짜:</label>
+            <input type="text" id="Date" name="Date" value="2024-04-22">
+        </div>
+        <div>
+            <label for="Place">장소:</label>
+            <input type="text" id="Place" name="Place" value="ㄴㅇㄻㄴㄹㅇ">
+        </div>
+        <div>
+            <label for="Department">부서:</label>
+            <input type="text" id="Department" name="Department" value="경영지원">
+        </div>
+        <div>
+            <label for="Name">이름:</label>
+            <input type="text" id="Name" name="Name" value="조준호">
+        </div>
+        <div>
+            <label for="Hp">연락처:</label>
+            <input type="text" id="Hp" name="Hp" value="010-7923-1077">
+        </div>
+        <div>
+            <label for="Factors">위험 요소:</label>
+            <textarea id="Factors" name="Factors">ㄴㅁㅇㄹㄴㅁㅇㄹ</textarea>
+        </div>
+        <div>
+            <label for="files">파일 업로드:</label>
+            <input type="file" id="files" name="files" multiple>
+        </div>
+        <div>
+            <button type="submit">정보 전송</button>
+        </div>
+    </form>
+</body>
+</html>
