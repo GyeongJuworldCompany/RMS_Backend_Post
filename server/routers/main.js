@@ -12,7 +12,8 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs"); // 해쉬 비번을 위한거!
 
 // 파일 이름을 위해!
-const moment = require("moment"); // 파일 이름 지어지는 방식을 위해 !
+// const moment = require("moment"); // 파일 이름 지어지는 방식을 위해 !
+const moment = require('moment-timezone');
 
 // https 서버를 위해!
 const https = require("https");
@@ -328,7 +329,7 @@ module.exports = function (app, upload) {
   app.post("/create", upload.array("files"), async (req, res) => {
     console.log(req.body); // 디버그 정보
     console.log(req.files); // 업로드된 파일 정보
-
+    
     try {
       const {
         Date: ReceivedDate,
@@ -354,7 +355,7 @@ module.exports = function (app, upload) {
         .input("Hp", sql.Char, Hp)
         .input("Factors", sql.NVarChar, Factors)
         .input("Manager", sql.Char, Manager)
-        .input("Created_At", sql.DateTime, new Date())
+        .input("Created_At", sql.DateTimeOffset, moment().tz('Asia/Seoul').format())   
         .input("CreatedBy", sql.VarChar, Name || "DefaultUser")
         .input("Status", sql.Char, "접수")
         .input("Route", sql.Char, "신고자등록")
@@ -364,7 +365,8 @@ module.exports = function (app, upload) {
 
       if (req.files && req.files.length > 0) {
         const fileInsertions = req.files.map((file, index) => {
-          const date = moment().format("YYYY-MM-DD");
+          // const date = moment().format("YYYY-MM-DD");
+          const date = moment().tz('Asia/Seoul').format("YYYY-MM-DD"); // 파일 저장할 폴더명 지정 
           const fileUrl = `${req.protocol}://${req.get(
             "host"
           )}/uploads/${date}/${file.filename}`;
@@ -375,7 +377,7 @@ module.exports = function (app, upload) {
             .input("ContentURL", sql.VarChar, fileUrl)
             .input("ContentStatus", sql.Char, "Y")
             .input("ContentSeq", sql.Int, index + 1)
-            .input("Created_At", sql.DateTime, new Date())
+            .input("Created_At", sql.DateTimeOffset, moment().tz('Asia/Seoul').format())
             .input("CreatedBy", sql.VarChar, Name || "DefaultUser").query(`
                             INSERT INTO RiskFactorContents (RFSeq, RFKind, ContentURL, ContentStatus, ContentSeq, Created_At, Created_By)
                             VALUES (@RFSeq, @RFKind, @ContentURL, @ContentStatus, @ContentSeq, @Created_At, @CreatedBy);
