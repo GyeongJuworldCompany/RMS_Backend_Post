@@ -240,17 +240,18 @@ module.exports = function (app, upload) {
         // S3에 파일 업로드
         const processFiles = async (files, kind) => {
           for (const file of files) {
-            const date = moment().format("YYYY-MM-DD");
-            const originalFilename = file.originalname.replace(
-              /[^a-zA-Z0-9.]/g,
-              "_"
-            ); // 파일 이름 정리
-            const s3Key = `uploads/${date}/${originalFilename}`;
+            const date = moment().format("YYYY-MM-DD"); // 파일 저장할 폴더명 지정
+            const formattedTime = moment().format("YYYYMMDDHHmmssSSS"); // 현재 시간을 정밀하게 포맷팅
+            const randomNum = Math.random().toString(36).substring(2, 8); // 난수 생성 (6자리)
+            const originalFilename = file.originalname.replace(/[^a-zA-Z0-9가-힣.]/g, "_"); // 파일 이름 정리
+            
+            // 고유 파일명 생성: 현재 시간 + 랜덤 문자열 + 원래 파일명
+            const s3Key = `uploads/${date}/${formattedTime}_${randomNum}_${originalFilename}`;
 
             try {
               await uploadFileToS3(
                 s3Key,
-                fs.createReadStream(file.path),
+                file.buffer,
                 file.mimetype
               );
               console.log("File uploaded to S3:", s3Key);
@@ -361,17 +362,18 @@ module.exports = function (app, upload) {
       if (req.files && req.files.length > 0) {
         const fileInsertions = req.files.map(async (file, index) => {
           const date = moment().format("YYYY-MM-DD"); // 파일 저장할 폴더명 지정
-          const originalFilename = file.originalname.replace(
-            /[^a-zA-Z0-9.]/g,
-            "_"
-          ); // 파일 이름을 안전하게 변경
-          const s3Key = `uploads/${date}/${originalFilename}`; // 원래 파일명 사용
+          const formattedTime = moment().format("YYYYMMDDHHmmssSSS"); // 현재 시간을 정밀하게 포맷팅
+          const randomNum = Math.random().toString(36).substring(2, 8); // 난수 생성 (6자리)
+          const originalFilename = file.originalname.replace(/[^a-zA-Z0-9가-힣.]/g, "_"); // 파일 이름 정리
+          
+          // 고유 파일명 생성: 현재 시간 + 랜덤 문자열 + 원래 파일명
+          const s3Key = `uploads/${date}/${formattedTime}_${randomNum}_${originalFilename}`;
 
           // S3 업로드
           try {
             await uploadFileToS3(
               s3Key,
-              fs.createReadStream(file.path),
+              file.buffer,
               file.mimetype
             );
             console.log("File uploaded to S3:", s3Key);
@@ -820,18 +822,19 @@ module.exports = function (app, upload) {
         for (const file of req.files) {
           currentMaxSeq++; // ContentSeq 증가
 
-          const date = moment().format("YYYY-MM-DD");
-          const originalFilename = file.originalname.replace(
-            /[^a-zA-Z0-9.]/g,
-            "_"
-          ); // 파일 이름을 안전하게 변경
-          const s3Key = `uploads/${date}/${originalFilename}`; // 원래 파일명 사용
+          const date = moment().format("YYYY-MM-DD"); // 파일 저장할 폴더명 지정
+          const formattedTime = moment().format("YYYYMMDDHHmmssSSS"); // 현재 시간을 정밀하게 포맷팅
+          const randomNum = Math.random().toString(36).substring(2, 8); // 난수 생성 (6자리)
+          const originalFilename = file.originalname.replace(/[^a-zA-Z0-9가-힣.]/g, "_"); // 파일 이름 정리
+          
+          // 고유 파일명 생성: 현재 시간 + 랜덤 문자열 + 원래 파일명
+          const s3Key = `uploads/${date}/${formattedTime}_${randomNum}_${originalFilename}`;
 
           // S3 업로드
           try {
             await uploadFileToS3(
               s3Key,
-              fs.createReadStream(file.path),
+              file.buffer,
               file.mimetype
             );
             console.log("File uploaded to S3:", s3Key);

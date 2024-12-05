@@ -11,41 +11,45 @@ const proxy = require("express-http-proxy");
 
 const app = express(); //Express 애플리케이션의 인스턴스를 생성합니다.
 
-const storage = multer.diskStorage({
-  // 파일은 uploads폴더에 저장이 되고
-  destination: function (req, file, cb) {
-    // uploads 아래 날짜 폴더를 생성!
-    const date = moment().format("YYYY-MM-DD");
-    const dir = path.join(__dirname, "uploads", date);
+// 로컬에 저장할때 
+// const storage = multer.diskStorage({
+//   // 파일은 uploads폴더에 저장이 되고
+//   destination: function (req, file, cb) {
+//     // uploads 아래 날짜 폴더를 생성!
+//     const date = moment().format("YYYY-MM-DD");
+//     const dir = path.join(__dirname, "uploads", date);
 
-    // 없으면 만들어야지!
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true }); // Ensure that the directory is created if it does not exist
-    }
+//     // 없으면 만들어야지!
+//     if (!fs.existsSync(dir)) {
+//       fs.mkdirSync(dir, { recursive: true }); // Ensure that the directory is created if it does not exist
+//     }
 
-    cb(null, dir);
-  },
-  filename: function (req, file, cb) {
-    const now = moment();
-    const formattedTime = now.format("YYYYMMDDHHmmssSSS");
+//     cb(null, dir);
+//   },
+//   filename: function (req, file, cb) {
+//     const now = moment();
+//     const formattedTime = now.format("YYYYMMDDHHmmssSSS");
 
-    // const originalName = file.originalname;
-    // const fileName = file.fieldname + "-" + formattedTime +originalName;
+//     // const originalName = file.originalname;
+//     // const fileName = file.fieldname + "-" + formattedTime +originalName;
 
-    const randomNum = Math.random().toString(36).substring(2, 15); // 난수 생성
-    const extension = file.originalname.split(".").pop(); // 파일 확장자
+//     const randomNum = Math.random().toString(36).substring(2, 15); // 난수 생성
+//     const extension = file.originalname.split(".").pop(); // 파일 확장자
 
-    // // MOV(아이폰 확장자!)를 MP4로 변경
-    // if (extension.toLowerCase() === "mov") {
-    //     extension = "mp4";
-    // }
+//     // // MOV(아이폰 확장자!)를 MP4로 변경
+//     // if (extension.toLowerCase() === "mov") {
+//     //     extension = "mp4";
+//     // }
 
-    const fileName =
-      file.fieldname + "-" + formattedTime + randomNum + "." + extension;
+//     const fileName =
+//       file.fieldname + "-" + formattedTime + randomNum + "." + extension;
 
-    cb(null, fileName);
-  },
-});
+//     cb(null, fileName);
+//   },
+// });
+
+// s3에 저장!
+const storage = multer.memoryStorage();
 
 const upload = multer({ storage: storage });
 // cors 요청을 위한 옵션!!! (== cors 정책 설정!)
