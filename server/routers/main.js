@@ -13,10 +13,15 @@ const bcrypt = require("bcryptjs"); // 해쉬 비번을 위한거!
 
 // 파일 이름을 위해!
 // const moment = require("moment"); // 파일 이름 지어지는 방식을 위해 !
-const moment = require('moment-timezone');
+const moment = require("moment-timezone");
 
 // https 서버를 위해!
 const https = require("https");
+
+const { PutObjectCommand } = require("@aws-sdk/client-s3");
+const fs = require("fs");
+const { uploadFileToS3 } = require("../../s3"); // s3 모듈에서 업로드 함수 가져오기
+const { v4: uuidv4 } = require("uuid"); // uuid 라이브러리 추가
 
 // 클라이언트에게 받은 id로 등록된 pw를 가져오는 함수
 // 모든 필드값 select 함!!
@@ -181,14 +186,14 @@ module.exports = function (app, upload) {
         await transaction.begin();
 
         const handlerQuery = `
-            SELECT	Handler = EMP_NO,
-            Handler_nm = EMP_KOR_NM,
-            Handler_dep = GJWD_DBF.DBO.F_DEPT_NM(DEPT_CD),
-            Handler_hp = REPLACE(CEL_TEL_NO,'-','') 
+              SELECT	Handler = EMP_NO,
+              Handler_nm = EMP_KOR_NM,
+              Handler_dep = GJWD_DBF.DBO.F_DEPT_NM(DEPT_CD),
+              Handler_hp = REPLACE(CEL_TEL_NO,'-','') 
             FROM GJWD_DBF..PBB01M00
-            WHERE RETIRE_YN = 'N' 
-            AND MILL_CD = 'SB' 
-            AND EMP_NO = @Manager_Handler
+            WHERE RETIRE_YN = 'N'
+              AND MILL_CD = 'SB'
+              AND EMP_NO = @Manager_Handler
             ORDER BY Handler_dep;
         `;
         const handlerDetails = await pool
@@ -211,7 +216,7 @@ module.exports = function (app, upload) {
             VALUES (@Date, '미정', @Place, @Department, @Factors, @BeforeAction, @BeforeLevel,
                 @Solution, @AfterAction, @AfterLevel, @DueDate, @FinishDate, @Cost, @Status, @Manager, @Handler, GETDATE(), @Name, '관리자등록')
             SELECT SCOPE_IDENTITY() as RFSeq;
-    `;
+        `;
         request
           .input("Date", sql.VarChar, Date)
           .input("Name", sql.NVarChar, handlerName)
@@ -232,21 +237,38 @@ module.exports = function (app, upload) {
         const managementResult = await request.query(managementQuery);
         const RFSeq = managementResult.recordset[0].RFSeq;
 
-        // Handling file uploads
+        // S3에 파일 업로드
         const processFiles = async (files, kind) => {
           for (const file of files) {
             const date = moment().format("YYYY-MM-DD");
-            const fileUrl = `${req.protocol}://${req.get(
-              "host"
-            )}/uploads/${date}/${file.filename}`;
+            const originalFilename = file.originalname.replace(
+              /[^a-zA-Z0-9.]/g,
+              "_"
+            ); // 파일 이름 정리
+            const s3Key = `uploads/${date}/${originalFilename}`;
 
-            // Query to get the current max ContentSeq for the given RFSeq and RFKind
+            try {
+              await uploadFileToS3(
+                s3Key,
+                fs.createReadStream(file.path),
+                file.mimetype
+              );
+              console.log("File uploaded to S3:", s3Key);
+            } catch (error) {
+              console.error("S3 upload error:", error);
+              throw new Error("Failed to upload file to S3");
+            }
+
+            // DB에 URL 저장
+            const fileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
+
+            // 주어진 RFSeq 및 RFKind에 대한 현재 최대 ContentSeq를 가져오는 쿼리
             const seqRequest = new sql.Request(transaction);
             seqRequest.input("RFSeq", sql.Int, RFSeq);
             seqRequest.input("RFKind", sql.Char, kind);
             const seqResult = await seqRequest.query(`
-            SELECT MAX(ContentSeq) AS maxSeq FROM RiskFactorContents WHERE RFSeq = @RFSeq AND RFKind = @RFKind;
-        `);
+              SELECT MAX(ContentSeq) AS maxSeq FROM RiskFactorContents WHERE RFSeq = @RFSeq AND RFKind = @RFKind;
+            `);
             const maxSeq = seqResult.recordset[0].maxSeq || 0;
             const newSeq = maxSeq + 1;
 
@@ -259,46 +281,18 @@ module.exports = function (app, upload) {
               .input("Created_At", sql.DateTime, new global.Date())
               .input("CreatedBy", sql.NVarChar, handlerName); // `CreatedBy`에 핸들러 이름 삽입
             await fileRequest.query(`
-            INSERT INTO RiskFactorContents (RFSeq, RFKind, ContentURL, ContentStatus, ContentSeq, Created_At, Created_By)
-            VALUES (@RFSeq, @RFKind, @ContentURL, 'Y', @ContentSeq, @Created_At, @CreatedBy);
-        `);
+              INSERT INTO RiskFactorContents (RFSeq, RFKind, ContentURL, ContentStatus, ContentSeq, Created_At, Created_By)
+              VALUES (@RFSeq, @RFKind, @ContentURL, 'Y', @ContentSeq, @Created_At, @CreatedBy);
+            `);
           }
         };
 
         if (req.files["preImage"]) {
-          try {
-            await processFiles(req.files["preImage"], "B");
-            console.log(
-              "Pre Image Files:",
-              req.files["preImage"].map((file) => ({
-                name: file.originalname,
-                size: file.size,
-                type: file.mimetype,
-              }))
-            );
-          } catch (err) {
-            await transaction.rollback();
-            res.status(500).send("Failed to process preImage files.");
-            return;
-          }
+          await processFiles(req.files["preImage"], "B");
         }
 
         if (req.files["afterImage"]) {
-          try {
-            await processFiles(req.files["afterImage"], "A");
-            console.log(
-              "After Image Files:",
-              req.files["afterImage"].map((file) => ({
-                name: file.originalname,
-                size: file.size,
-                type: file.mimetype,
-              }))
-            );
-          } catch (err) {
-            await transaction.rollback();
-            res.status(500).send("Failed to process afterImage files.");
-            return;
-          }
+          await processFiles(req.files["afterImage"], "A");
         }
         await transaction.commit();
         res.json({
@@ -329,7 +323,7 @@ module.exports = function (app, upload) {
   app.post("/create", upload.array("files"), async (req, res) => {
     console.log(req.body); // 디버그 정보
     console.log(req.files); // 업로드된 파일 정보
-    
+
     try {
       const {
         Date: ReceivedDate,
@@ -345,7 +339,7 @@ module.exports = function (app, upload) {
 
       const managementQuery = `INSERT INTO RiskFactorManagement (Date, Place, Department, Name, Hp, Factors, Manager, Created_At, Created_By , Status , Route )
                                      VALUES (@ReceivedDate, @Place, @Department, @Name, @Hp, @Factors, @Manager, @Created_At, @CreatedBy, @Status , @Route);
-                                     SELECT SCOPE_IDENTITY() as RFSeq;`;
+            SELECT SCOPE_IDENTITY() as RFSeq;`;
       const result = await pool
         .request()
         .input("ReceivedDate", sql.VarChar, ReceivedDate)
@@ -363,13 +357,32 @@ module.exports = function (app, upload) {
 
       const RFSeq = result.recordset[0].RFSeq;
 
+      // S3에 파일 업로드 및 DB 저장
       if (req.files && req.files.length > 0) {
-        const fileInsertions = req.files.map((file, index) => {
-          // const date = moment().format("YYYY-MM-DD");
-          const date = moment().tz('Asia/Seoul').format("YYYY-MM-DD"); // 파일 저장할 폴더명 지정 
-          const fileUrl = `${req.protocol}://${req.get(
-            "host"
-          )}/uploads/${date}/${file.filename}`;
+        const fileInsertions = req.files.map(async (file, index) => {
+          const date = moment().format("YYYY-MM-DD"); // 파일 저장할 폴더명 지정
+          const originalFilename = file.originalname.replace(
+            /[^a-zA-Z0-9.]/g,
+            "_"
+          ); // 파일 이름을 안전하게 변경
+          const s3Key = `uploads/${date}/${originalFilename}`; // 원래 파일명 사용
+
+          // S3 업로드
+          try {
+            await uploadFileToS3(
+              s3Key,
+              fs.createReadStream(file.path),
+              file.mimetype
+            );
+            console.log("File uploaded to S3:", s3Key);
+          } catch (error) {
+            console.error("S3 upload error:", error);
+            throw new Error("Failed to upload file to S3");
+          }
+          // S3 URL 생성
+          const fileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
+
+          // 데이터베이스에 파일 정보 추가
           return pool
             .request()
             .input("RFSeq", sql.Int, RFSeq)
@@ -379,9 +392,9 @@ module.exports = function (app, upload) {
             .input("ContentSeq", sql.Int, index + 1)
             .input("Created_At", sql.DateTimeOffset, moment().tz('Asia/Seoul').format())
             .input("CreatedBy", sql.VarChar, Name || "DefaultUser").query(`
-                            INSERT INTO RiskFactorContents (RFSeq, RFKind, ContentURL, ContentStatus, ContentSeq, Created_At, Created_By)
-                            VALUES (@RFSeq, @RFKind, @ContentURL, @ContentStatus, @ContentSeq, @Created_At, @CreatedBy);
-                        `);
+                        INSERT INTO RiskFactorContents (RFSeq, RFKind, ContentURL, ContentStatus, ContentSeq, Created_At, Created_By)
+                        VALUES (@RFSeq, @RFKind, @ContentURL, @ContentStatus, @ContentSeq, @Created_At, @CreatedBy);
+                    `);
         });
 
         await Promise.all(fileInsertions);
@@ -740,24 +753,24 @@ module.exports = function (app, upload) {
         return res.status(400).send("No files were uploaded.");
       }
 
-      const pool = await poolPromise; // Get database connection pool
+      const pool = await poolPromise; // 데이터베이스 연결 풀
       const transaction = new sql.Transaction(pool);
 
       try {
-        await transaction.begin(); // Start the transaction
+        await transaction.begin(); // 트랜잭션 시작
 
-        // Fetch Handler details
+        // Handler 세부 정보 가져오기
         const handlerQuery = `
-                SELECT	Handler = EMP_NO,
-                Handler_nm = EMP_KOR_NM,
-                Handler_dep = GJWD_DBF.DBO.F_DEPT_NM(DEPT_CD),
-                Handler_hp = REPLACE(CEL_TEL_NO,'-','') 
-                FROM GJWD_DBF..PBB01M00
-                WHERE RETIRE_YN = 'N' 
-                AND MILL_CD = 'SB' 
-                AND EMP_NO = @Handler
-                ORDER BY Handler_dep;
-            `;
+        SELECT	Handler = EMP_NO,
+        Handler_nm = EMP_KOR_NM,
+        Handler_dep = GJWD_DBF.DBO.F_DEPT_NM(DEPT_CD),
+        Handler_hp = REPLACE(CEL_TEL_NO,'-','') 
+        FROM GJWD_DBF..PBB01M00
+        WHERE RETIRE_YN = 'N'
+          AND MILL_CD = 'SB'
+          AND EMP_NO = @Handler
+        ORDER BY Handler_dep;
+      `;
         const handlerDetails = await pool
           .request()
           .input("Handler", sql.Int, Handler)
@@ -769,6 +782,7 @@ module.exports = function (app, upload) {
 
         const handlerName = handlerDetails.recordset[0].Handler_nm; //Handler_nm 사번에 해당하는 사원 이름!!!
 
+        // 기존 Created_By 값을 가져오기
         let createdByValue;
         try {
           const result = await pool
@@ -789,12 +803,12 @@ module.exports = function (app, upload) {
             .send("Failed to fetch initial data for content upload.");
         }
 
-        // Select the maximum sequence number for the current RFSeq
+        // 현재 최대 ContentSeq 값 가져오기
         const seqQuery = `
-                SELECT MAX(ContentSeq) as MaxSeq
-                FROM RiskFactorContents
-                WHERE RFSeq = @RFSeq;
-            `;
+        SELECT MAX(ContentSeq) as MaxSeq
+        FROM RiskFactorContents
+        WHERE RFSeq = @RFSeq;
+      `;
         let request = new sql.Request(transaction);
         request.input("RFSeq", sql.Int, RFSeq);
         const seqResult = await request.query(seqQuery);
@@ -802,31 +816,50 @@ module.exports = function (app, upload) {
 
         const responses = [];
 
-        // 파일별로 처리
+        // S3 업로드 및 데이터베이스 저장
         for (const file of req.files) {
           currentMaxSeq++; // ContentSeq 증가
 
           const date = moment().format("YYYY-MM-DD");
-          const fileUrl = `${req.protocol}://${req.get(
-            "host"
-          )}/uploads/${date}/${file.filename}`;
+          const originalFilename = file.originalname.replace(
+            /[^a-zA-Z0-9.]/g,
+            "_"
+          ); // 파일 이름을 안전하게 변경
+          const s3Key = `uploads/${date}/${originalFilename}`; // 원래 파일명 사용
 
+          // S3 업로드
+          try {
+            await uploadFileToS3(
+              s3Key,
+              fs.createReadStream(file.path),
+              file.mimetype
+            );
+            console.log("File uploaded to S3:", s3Key);
+          } catch (error) {
+            console.error("S3 upload error:", error);
+            throw new Error("Failed to upload file to S3");
+          }
+
+          // S3 URL 생성
+          const fileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
+
+          // 데이터베이스에 파일 정보 추가 (MERGE 사용)
           request = new sql.Request(transaction);
           const upsertQuery = `
-                MERGE INTO RiskFactorContents AS target
-                USING (VALUES (@RFSeq, @RFKind, @fileUrl, 'Y', @currentMaxSeq, GETDATE(), @handlerName, GETDATE()))
-                    AS source (RFSeq, RFKind, ContentURL, ContentStatus, ContentSeq, Created_At, Updated_By, Updated_At)
-                ON target.RFSeq = source.RFSeq AND target.ContentSeq = source.ContentSeq
-                WHEN MATCHED THEN
-                    UPDATE SET 
-                        ContentURL = source.ContentURL, 
-                        Updated_By = ISNULL(target.Updated_By, source.Updated_By),
-                        Updated_At = GETDATE(),
-                        Created_By = target.Created_By
-                WHEN NOT MATCHED THEN
-                    INSERT (RFSeq, RFKind, ContentURL, ContentStatus, ContentSeq, Created_At, Updated_By, Updated_At, Created_By)
-                    VALUES (source.RFSeq, source.RFKind, source.ContentURL, source.ContentStatus, source.ContentSeq, source.Created_At, source.Updated_By, GETDATE(),  @createdByValue);  
-                `;
+          MERGE INTO RiskFactorContents AS target
+          USING (VALUES (@RFSeq, @RFKind, @fileUrl, 'Y', @currentMaxSeq, GETDATE(), @handlerName, GETDATE()))
+              AS source (RFSeq, RFKind, ContentURL, ContentStatus, ContentSeq, Created_At, Updated_By, Updated_At)
+          ON target.RFSeq = source.RFSeq AND target.ContentSeq = source.ContentSeq
+          WHEN MATCHED THEN
+              UPDATE SET 
+                  ContentURL = source.ContentURL, 
+                  Updated_By = ISNULL(target.Updated_By, source.Updated_By),
+                  Updated_At = GETDATE(),
+                  Created_By = target.Created_By
+          WHEN NOT MATCHED THEN
+              INSERT (RFSeq, RFKind, ContentURL, ContentStatus, ContentSeq, Created_At, Updated_By, Updated_At, Created_By)
+              VALUES (source.RFSeq, source.RFKind, source.ContentURL, source.ContentStatus, source.ContentSeq, source.Created_At, source.Updated_By, GETDATE(),  @createdByValue);  
+        `;
           request
             .input("RFSeq", sql.Int, RFSeq)
             .input("RFKind", sql.Char, RFKind)
@@ -839,14 +872,14 @@ module.exports = function (app, upload) {
           responses.push({ ContentURL: fileUrl, ContentSeq: currentMaxSeq });
         }
 
-        await transaction.commit(); // Commit the transaction
+        await transaction.commit(); // 트랜잭션 커밋
         res.json({
           success: true,
           message: "Contents successfully uploaded.",
           data: responses,
         });
       } catch (err) {
-        await transaction.rollback(); // Rollback the transaction on error
+        await transaction.rollback(); // 에러 발생 시 롤백
         console.error("Database error occurred:", err);
         res.status(500).send("Error processing content upload.");
       }
