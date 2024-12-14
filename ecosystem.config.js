@@ -4,6 +4,7 @@ module.exports = {
       name: "rms server",
       script: "./server.js", // 애플리케이션의 진입점 파일 경로
       watch: true, // 파일 변경 감지 여부
+      // watch: false, // 혹시나 충돌되면!
       ignore_watch: ["node_modules"], // 감시할 파일 또는 디렉터리 제외
       instances: 1, // 프로세스 인스턴스 수
       exec_mode: "fork", // 실행 모드 (fork 또는 cluster)
