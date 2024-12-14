@@ -98,7 +98,8 @@ app.use(
       const token = req.query.token;
       const workbook = req.query.workbook;
       const view = req.query.view;
-      const targetUrl = `http://smart.gjw.co.kr:8000/trusted/${token}/views/${workbook}/${view}`;
+      const tableauUrl = process.env.TABLEAU_URL;
+      const targetUrl = `${tableauUrl}/trusted/${token}/views/${workbook}/${view}`;
       console.log(`Routing to: ${targetUrl}`);
       return targetUrl;
     },
